@@ -1,8 +1,9 @@
 pkg/
-.DS_Store
-metadata.json
-coverage/
-spec/fixtures/
 Gemfile.lock
+vendor/
+spec/fixtures/
+.vagrant/
 .bundle/
-vendor/bundle/
+coverage/
+.idea/
+*.iml
