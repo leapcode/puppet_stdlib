@@ -34,12 +34,16 @@ Puppet::Type.newtype(:file_line) do
     In this code example match will look for a line beginning with export
     followed by HTTP_PROXY and replace it with the value in line.
 
-    Match Example With `ensure => absent`:
+    Examples With `ensure => absent`:
+
+    This type has two behaviors when `ensure => absent` is set.
+
+    One possibility is to set `match => ...` and `match_for_absence => true`,
+    as in the following example:
 
         file_line { 'bashrc_proxy':
           ensure            => absent,
           path              => '/etc/bashrc',
-          line              => 'export HTTP_PROXY=http://squid.puppetlabs.vm:3128',
           match             => '^export\ HTTP_PROXY\=',
           match_for_absence => true,
         }
@@ -47,6 +51,38 @@ Puppet::Type.newtype(:file_line) do
     In this code example match will look for a line beginning with export
     followed by HTTP_PROXY and delete it.  If multiple lines match, an
     error will be raised unless the `multiple => true` parameter is set.
+
+    Note that the `line => ...` parameter would be accepted BUT IGNORED in
+    the above example.
+
+    The second way of using `ensure => absent` is to specify a `line => ...`,
+    and no match:
+
+        file_line { 'bashrc_proxy':
+          ensure => absent,
+          path   => '/etc/bashrc',
+          line   => 'export HTTP_PROXY=http://squid.puppetlabs.vm:3128',
+        }
+
+    Note that when ensuring lines are absent this way, the default behavior
+    this time is to always remove all lines matching, and this behavior
+    can't be disabled.
+
+    Encoding example:
+
+        file_line { "XScreenSaver":
+          ensure   => present,
+          path     => '/root/XScreenSaver'
+          line     => "*lock: 10:00:00",
+          match    => '^*lock:',
+          encoding => "iso-8859-1",
+        }
+
+    Files with special characters that are not valid UTF-8 will give the
+    error message "invalid byte sequence in UTF-8".  In this case, determine
+    the correct file encoding and specify the correct encoding using the
+    encoding attribute, the value of which needs to be a valid Ruby character
+    encoding.
 
     **Autorequires:** If Puppet is managing the file that will contain the line
     being managed, the file_line resource will autorequire that file.
@@ -88,8 +124,16 @@ Puppet::Type.newtype(:file_line) do
          ' This is also takes a regex.'
   end
 
-  newparam(:line) do
+  # The line property never changes; the type only ever performs a create() or
+  # destroy(). line is a property in order to allow it to correctly handle
+  # Sensitive type values. Because it is a property which will never change,
+  # it should never be considered out of sync.
+  newproperty(:line) do
     desc 'The line to be appended to the file or used to replace matches found by the match attribute.'
+
+    def retrieve
+      @resource[:line]
+    end
   end
 
   newparam(:path) do
@@ -103,6 +147,17 @@ Puppet::Type.newtype(:file_line) do
 
   newparam(:replace) do
     desc 'If true, replace line that matches. If false, do not write line if a match is found'
+    newvalues(true, false)
+    defaultto true
+  end
+
+  newparam(:encoding) do
+    desc 'For files that are not UTF-8 encoded, specify encoding such as iso-8859-1'
+    defaultto 'UTF-8'
+  end
+
+  newparam(:append_on_no_match) do
+    desc 'If true, append line if match is not found. If false, do not append line if a match is not found'
     newvalues(true, false)
     defaultto true
   end

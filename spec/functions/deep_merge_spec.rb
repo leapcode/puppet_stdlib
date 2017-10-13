@@ -4,7 +4,7 @@ describe 'deep_merge' do
   it { is_expected.to run.with_params().and_raise_error(Puppet::ParseError, /wrong number of arguments/i) }
   it { is_expected.to run.with_params({ 'key' => 'value' }).and_raise_error(Puppet::ParseError, /wrong number of arguments/i) }
   it { is_expected.to run.with_params({}, '2').and_raise_error(Puppet::ParseError, /unexpected argument type String/) }
-  it { is_expected.to run.with_params({}, 2).and_raise_error(Puppet::ParseError, /unexpected argument type Fixnum/) }
+  it { is_expected.to run.with_params({}, 2).and_raise_error(Puppet::ParseError, /unexpected argument/) }
   it { is_expected.to run.with_params({}, '').and_return({}) }
   it { is_expected.to run.with_params({}, {}).and_return({}) }
   it { is_expected.to run.with_params({}, {}, {}).and_return({}) }
@@ -51,5 +51,9 @@ describe 'deep_merge' do
     subject.call([argument1, argument2])
     expect(argument1).to eq(original1)
     expect(argument2).to eq(original2)
+  end
+
+  context 'should run with UTF8 and double byte characters' do
+    it { is_expected.to run.with_params({'ĸέỹ1' => 'ϋǻļủë1'}, {'この文字列' => '万' }).and_return({'ĸέỹ1' => 'ϋǻļủë1', 'この文字列' => '万'}) }
   end
 end

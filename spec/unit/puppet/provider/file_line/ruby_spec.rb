@@ -2,7 +2,8 @@
 require 'spec_helper'
 require 'tempfile'
 provider_class = Puppet::Type.type(:file_line).provider(:ruby)
-describe provider_class do
+# These tests fail on windows when run as part of the rake task. Individually they pass
+describe provider_class, :unless => Puppet::Util::Platform.windows? do
   context "when adding" do
     let :tmpfile do
       tmp = Tempfile.new('tmp')
@@ -29,7 +30,7 @@ describe provider_class do
       File.open(tmpfile, 'w') do |fh|
         fh.write('foo1')
       end
-      expect(provider.exists?).to be_nil
+      expect(provider.exists?).to eql (false)
     end
     it 'should append to an existing file when creating' do
       provider.create
@@ -69,7 +70,7 @@ describe provider_class do
       File.open(@tmpfile, 'w') do |fh|
         fh.write("foo1\nfoo2")
       end
-      expect(@provider.exists?).to be_nil
+      expect(@provider.exists?).to eql (false)
       @provider.create
       expect(File.read(@tmpfile).chomp).to eql("foo1\nfoo2\nfoo = bar")
     end
@@ -112,7 +113,7 @@ describe provider_class do
         File.open(@tmpfile, 'w') do |fh|
           fh.write("foo1\nfoo=blah\nfoo2\nfoo=baz")
         end
-        expect(@provider.exists?).to be_nil
+        expect(@provider.exists?).to eql(false)
         expect { @provider.create }.to raise_error(Puppet::Error, /More than one line.*matches/)
         expect(File.read(@tmpfile)).to eql("foo1\nfoo=blah\nfoo2\nfoo=baz")
       end
@@ -131,9 +132,28 @@ describe provider_class do
         File.open(@tmpfile, 'w') do |fh|
           fh.write("foo1\nfoo=blah\nfoo2\nfoo=baz")
         end
-        expect(@provider.exists?).to be_nil
+        expect(@provider.exists?).to eql(false)
         @provider.create
         expect(File.read(@tmpfile).chomp).to eql("foo1\nfoo = bar\nfoo2\nfoo = bar")
+      end
+
+      it 'should replace all lines that match, even when some lines are correct' do
+        @resource = Puppet::Type::File_line.new(
+          {
+            :name     => 'neil',
+            :path     => @tmpfile,
+            :line     => "\thard\tcore\t0\n",
+            :match    => '^[ \t]hard[ \t]+core[ \t]+.*',
+            :multiple => true,
+          }
+        )
+        @provider = provider_class.new(@resource)
+        File.open(@tmpfile, 'w') do |fh|
+          fh.write("\thard\tcore\t90\n\thard\tcore\t0\n")
+        end
+        expect(@provider.exists?).to eql(false)
+        @provider.create
+        expect(File.read(@tmpfile).chomp).to eql("\thard\tcore\t0\n\thard\tcore\t0")
       end
 
       it 'should raise an error with invalid values' do
@@ -154,7 +174,7 @@ describe provider_class do
         File.open(@tmpfile, 'w') do |fh|
           fh.write("foo1\nfoo=blah\nfoo2")
         end
-        expect(@provider.exists?).to be_nil
+        expect(@provider.exists?).to eql(false)
         @provider.create
         expect(File.read(@tmpfile).chomp).to eql("foo1\nfoo = bar\nfoo2")
       end
@@ -162,7 +182,7 @@ describe provider_class do
         File.open(@tmpfile, 'w') do |fh|
           fh.write("foo1\nfoo2")
         end
-        expect(@provider.exists?).to be_nil
+        expect(@provider.exists?).to eql(false)
         @provider.create
         expect(File.read(@tmpfile)).to eql("foo1\nfoo2\nfoo = bar\n")
       end
@@ -170,9 +190,27 @@ describe provider_class do
         File.open(@tmpfile, 'w') do |fh|
           fh.write("foo1\nfoo = bar\nfoo2")
         end
-        expect(@provider.exists?).to be_truthy
+        expect(@provider.exists?).to eql(true)
         @provider.create
         expect(File.read(@tmpfile).chomp).to eql("foo1\nfoo = bar\nfoo2")
+      end
+
+      it 'should not add line after no matches found' do
+        @resource = Puppet::Type::File_line.new(
+          {
+            :name               => 'foo',
+            :path               => @tmpfile,
+            :line               => 'inserted = line',
+            :match              => '^foo3$',
+            :append_on_no_match => false,
+          }
+        )
+        @provider = provider_class.new(@resource)
+        File.open(@tmpfile, 'w') do |fh|
+          fh.write("foo1\nfoo = blah\nfoo2\nfoo = baz")
+        end
+        expect(@provider.exists?).to be true
+        expect(File.read(@tmpfile).chomp).to eql("foo1\nfoo = blah\nfoo2\nfoo = baz")
       end
     end
 
@@ -274,7 +312,7 @@ describe provider_class do
             }
           )
           @provider = provider_class.new(@resource)
-          expect(@provider.exists?).to be_nil
+          expect(@provider.exists?).to eql (false) 
           @provider.create
           expect(File.read(@tmpfile).chomp).to eql("foo1\ninserted = line\nfoo = blah\nfoo2\nfoo1\ninserted = line\nfoo = baz")
         end
@@ -299,7 +337,7 @@ describe provider_class do
     end
   end
 
-  context "when removing" do
+  context "when removing with a line" do
     before :each do
       # TODO: these should be ported over to use the PuppetLabs spec_helper
       #  file fixtures once the following pull request has been merged:
@@ -340,6 +378,23 @@ describe provider_class do
       @provider.destroy
       expect(File.read(@tmpfile)).to eql("foo1\nfoo2\n")
     end
+
+    it 'example in the docs' do
+      @resource = Puppet::Type::File_line.new(
+        {
+          :name   => 'bashrc_proxy',
+          :ensure => 'absent',
+          :path   => @tmpfile,
+          :line   => 'export HTTP_PROXY=http://squid.puppetlabs.vm:3128',
+        }
+      )
+      @provider = provider_class.new(@resource)
+      File.open(@tmpfile, 'w') do |fh|
+        fh.write("foo1\nfoo2\nexport HTTP_PROXY=http://squid.puppetlabs.vm:3128\nfoo4\n")
+      end
+      @provider.destroy
+      expect(File.read(@tmpfile)).to eql("foo1\nfoo2\nfoo4\n")
+    end
   end
 
   context "when removing with a match" do
@@ -367,10 +422,45 @@ describe provider_class do
       File.open(@tmpfile, 'w') do |fh|
         fh.write("foo1\nfoo\nfoo2")
       end
-      expect(@provider.exists?).to be_truthy
+      expect(@provider.exists?).to eql (true)
     end
 
     it 'should remove one line if it matches' do
+      File.open(@tmpfile, 'w') do |fh|
+        fh.write("foo1\nfoo\nfoo2")
+      end
+      @provider.destroy
+      expect(File.read(@tmpfile)).to eql("foo1\nfoo2")
+    end
+
+    it 'the line parameter is actually not used at all but is silently ignored if here' do
+      @resource = Puppet::Type::File_line.new(
+        {
+          :name              => 'foo',
+          :path              => @tmpfile,
+          :line              => 'supercalifragilisticexpialidocious',
+          :ensure            => 'absent',
+          :match             => 'o$',
+          :match_for_absence => true,
+        }
+      )
+      File.open(@tmpfile, 'w') do |fh|
+        fh.write("foo1\nfoo\nfoo2")
+      end
+      @provider.destroy
+      expect(File.read(@tmpfile)).to eql("foo1\nfoo2")
+    end
+
+    it 'and may not be here and does not need to be here' do
+      @resource = Puppet::Type::File_line.new(
+        {
+          :name              => 'foo',
+          :path              => @tmpfile,
+          :ensure            => 'absent',
+          :match             => 'o$',
+          :match_for_absence => true,
+        }
+      )
       File.open(@tmpfile, 'w') do |fh|
         fh.write("foo1\nfoo\nfoo2")
       end
@@ -442,6 +532,41 @@ describe provider_class do
       expect(File.read(@tmpfile)).to eql("foo1\nfoo\n")
     end
 
-  end
+    it 'example in the docs' do
+      @resource = Puppet::Type::File_line.new(
+        {
+          :name              => 'bashrc_proxy',
+          :ensure            => 'absent',
+          :path              => @tmpfile,
+          :line              => 'export HTTP_PROXY=http://squid.puppetlabs.vm:3128',
+          :match             => '^export\ HTTP_PROXY\=',
+          :match_for_absence => true,
+        }
+      )
+      @provider = provider_class.new(@resource)
+      File.open(@tmpfile, 'w') do |fh|
+        fh.write("foo1\nfoo2\nexport HTTP_PROXY=foo\nfoo4\n")
+      end
+      @provider.destroy
+      expect(File.read(@tmpfile)).to eql("foo1\nfoo2\nfoo4\n")
+    end
 
+    it 'example in the docs showing line is redundant' do
+      @resource = Puppet::Type::File_line.new(
+        {
+          :name              => 'bashrc_proxy',
+          :ensure            => 'absent',
+          :path              => @tmpfile,
+          :match             => '^export\ HTTP_PROXY\=',
+          :match_for_absence => true,
+        }
+      )
+      @provider = provider_class.new(@resource)
+      File.open(@tmpfile, 'w') do |fh|
+        fh.write("foo1\nfoo2\nexport HTTP_PROXY=foo\nfoo4\n")
+      end
+      @provider.destroy
+      expect(File.read(@tmpfile)).to eql("foo1\nfoo2\nfoo4\n")
+    end
+  end
 end

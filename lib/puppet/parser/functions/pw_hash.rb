@@ -1,3 +1,6 @@
+
+#  Please note: This function is an implementation of a Ruby class and as such may not be entirely UTF8 compatible. To ensure compatibility please use this function with Ruby 2.4.0 or greater - https://bugs.ruby-lang.org/issues/10085.
+
 Puppet::Parser::Functions::newfunction(
   :pw_hash,
   :type => :rvalue,
@@ -24,6 +27,13 @@ Puppet::Parser::Functions::newfunction(
   environment contains several different operating systems, ensure that they
   are compatible before using this function.") do |args|
     raise ArgumentError, "pw_hash(): wrong number of arguments (#{args.size} for 3)" if args.size != 3
+    args.map! do |arg|
+      if (defined? Puppet::Pops::Types::PSensitiveType::Sensitive) && (arg.is_a? Puppet::Pops::Types::PSensitiveType::Sensitive)
+        arg.unwrap
+      else
+        arg
+      end
+    end
     raise ArgumentError, "pw_hash(): first argument must be a string" unless args[0].is_a? String or args[0].nil?
     raise ArgumentError, "pw_hash(): second argument must be a string" unless args[1].is_a? String
     hashes = { 'md5'     => '1',
